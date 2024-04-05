@@ -16,10 +16,10 @@ ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
 
 # Notion API 토큰
-NOTION_API_TOKEN = "NOTION_API_TOKEN"
+NOTION_API_TOKEN = "secret_wrCl4doJA9dLvLvhvr9F0fkAY5G481amKbb9jHwSTld"
 
 # 데이터베이스 ID
-DATABASE_ID = "NOTION_API_TOKEN"
+DATABASE_ID = "18aa4d68041448779c2513b29c3a930a"
 
 # Notion 페이지 생성 함수
 def create_notion_page(title, content, url, date, category_):
@@ -90,6 +90,8 @@ def date_re(date_string):
 
 
 def securityNotice_crawling():
+    print("")
+    print("")
     print("---------------------------------------------------")
     print("------------securityNotice_crawling 실행------------")
     url = 'http://knvd.krcert.or.kr/rss/securityNotice.do'
@@ -114,8 +116,9 @@ def securityNotice_crawling():
                 pass
 
 def boanNews_crawling():
+    print("")
+    print("")
     print("---------------------------------------------")
-
     print("------------boanNews_crawling 실행------------")
     url = 'http://www.boannews.com/media/news_rss.xml?skind=5'
     response = requests.get(url)
@@ -167,13 +170,19 @@ def Duplicate_check(title_to_check):
         print(f"'{title_to_check}' 제목은 데이터베이스에 존재하지 않습니다.")
         return 0  # 중복되지 않은 경우 0 반환
 
-securityNotice_crawling()
-time.sleep(1)
-boanNews_crawling()
+def start(): 
+    print (datetime.datetime.now()+": 루프 시작")
+    securityNotice_crawling()
+    time.sleep(1)
+    boanNews_crawling()
+    time.sleep(1)
+    print (datetime.datetime.now()+": 루프 끝")
+    print("")
+
 
 # 스케줄러 설정: 매일 00:00에 start 함수 실행
-schedule.every().day.at("09:00").do(securityNotice_crawling)
-schedule.every().day.at("09:10").do(boanNews_crawling)
+schedule.every(30).minutes.do(start)
+
 
 # 스케줄러 루프 실행
 while True:
