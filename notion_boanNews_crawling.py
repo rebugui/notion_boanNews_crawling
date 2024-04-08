@@ -7,8 +7,9 @@ import time
 import urllib.request
 import xml.etree.ElementTree as ET
 import re
-from datetime import datetime
 import ssl
+import datetime
+
 
 # SSL 인증서 검증 비활성화
 ssl_context = ssl.create_default_context()
@@ -81,10 +82,10 @@ def create_notion_page(title, content, url, date, category_):
 def date_re(date_string):
     try:
         # 1. +0900 형식의 문자열
-        date_object = datetime.strptime(date_string, "%a, %d %b %Y %H:%M:%S %z")
+        date_object = datetime.datetime.strptime(date_string, "%a, %d %b %Y %H:%M:%S %z")
     except ValueError:
         # 2. GMT 형식의 문자열
-        date_object = datetime.strptime(date_string, "%a, %d %b %Y %H:%M:%S %Z")
+        date_object = datetime.datetime.strptime(date_string, "%a, %d %b %Y %H:%M:%S %Z")
     print("날짜 출력",date_object,"///"+date_object.strftime('%Y-%m-%d'))
     return date_object.strftime('%Y-%m-%d')
 
@@ -171,15 +172,20 @@ def Duplicate_check(title_to_check):
         return 0  # 중복되지 않은 경우 0 반환
 
 def start(): 
-    print (datetime.datetime.now()+": 루프 시작")
+    now = datetime.datetime.now()
+    print(f"{now}: 루프 시작")
     securityNotice_crawling()
     time.sleep(1)
     boanNews_crawling()
     time.sleep(1)
-    print (datetime.datetime.now()+": 루프 끝")
+    now = datetime.datetime.now()
+    print(f"{now}: 루프 끝")
     print("")
 
-
+securityNotice_crawling()
+time.sleep(1)
+boanNews_crawling()
+time.sleep(1)
 # 스케줄러 설정: 매일 00:00에 start 함수 실행
 schedule.every(30).minutes.do(start)
 
