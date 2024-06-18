@@ -89,61 +89,67 @@ def date_re(date_string):
     print("날짜 출력",date_object,"///"+date_object.strftime('%Y-%m-%d'))
     return date_object.strftime('%Y-%m-%d')
 
-
 def securityNotice_crawling():
     print("")
     print("")
     print("---------------------------------------------------")
     print("------------securityNotice_crawling 실행------------")
-    url = 'http://knvd.krcert.or.kr/rss/securityNotice.do'
-    with urllib.request.urlopen(url, context=ssl_context) as f:
-        s = f.read().decode('utf-8')
-    root = ET.fromstring(s)
-    channel = root[0]
-    items = filter(lambda x: x.tag == 'item', channel)
+    try:
+        url = 'http://knvd.krcert.or.kr/rss/securityNotice.do'
+        with urllib.request.urlopen(url, context=ssl_context) as f:
+            s = f.read().decode('utf-8')
+        root = ET.fromstring(s)
+        channel = root[0]
+        items = filter(lambda x: x.tag == 'item', channel)
 
-    for item in items:
-        title = item[0].text.strip()
-        url = item[1].text
-        content = item[2].text
-        date = date_re(item[4].text)
-        category_ = "보안공지"
-        if Duplicate_check(title) == 1:
-            print("이미 있는 공지")
-        else:
-            try:
-                create_notion_page(title, content, url, date, category_)
-            except:
-                pass
+        for item in items:
+            title = item[0].text.strip()
+            url = item[1].text
+            content = item[2].text
+            date = date_re(item[4].text)
+            category_ = "보안공지"
+            if Duplicate_check(title) == 1:
+                print("이미 있는 공지")
+            else:
+                try:
+                    create_notion_page(title, content, url, date, category_)
+                except Exception as e:
+                    print(f"에러 발생: {e}")
+                    continue
+    except Exception as e:
+        print(f"에러 발생: {e}")
 
 def boanNews_crawling():
     print("")
     print("")
     print("---------------------------------------------")
     print("------------boanNews_crawling 실행------------")
-    url = 'http://www.boannews.com/media/news_rss.xml?skind=5'
-    response = requests.get(url)
-    response.encoding = response.apparent_encoding  # 데이터의 인코딩 방식을 자동으로 인식하여 설정
+    try:
+        url = 'http://www.boannews.com/media/news_rss.xml?skind=5'
+        response = requests.get(url)
+        response.encoding = response.apparent_encoding  # 데이터의 인코딩 방식을 자동으로 인식하여 설정
 
-    s = response.text
-    root = ET.fromstring(s)
-    channel = root[0]
-    items = filter(lambda x: x.tag == 'item', channel)
+        s = response.text
+        root = ET.fromstring(s)
+        channel = root[0]
+        items = filter(lambda x: x.tag == 'item', channel)
 
-    for item in items:
-        title = item[0].text.strip()
-        url = item[1].text
-        content = item[2].text
-        date = date_re(item[4].text)
-        category_ = "보안뉴스"
-        if Duplicate_check(title) == 1:
-            print("이미 있는 뉴스")
-        else:
-            try:
-                create_notion_page(title, content, url, date, category_)
-            except:
-                pass
-
+        for item in items:
+            title = item[0].text.strip()
+            url = item[1].text
+            content = item[2].text
+            date = date_re(item[4].text)
+            category_ = "보안뉴스"
+            if Duplicate_check(title) == 1:
+                print("이미 있는 뉴스")
+            else:
+                try:
+                    create_notion_page(title, content, url, date, category_)
+                except Exception as e:
+                    print(f"에러 발생: {e}")
+                    continue
+    except Exception as e:
+        print(f"에러 발생: {e}")
   
 def Duplicate_check(title_to_check):
     # 데이터베이스 쿼리를 위한 엔드포인트 설정
@@ -171,12 +177,50 @@ def Duplicate_check(title_to_check):
         print(f"'{title_to_check}' 제목은 데이터베이스에 존재하지 않습니다.")
         return 0  # 중복되지 않은 경우 0 반환
 
+def delete_old_pages():
+    # 데이터베이스 쿼리를 위한 엔드포인트 설정
+    endpoint = f"https://api.notion.com/v1/databases/{DATABASE_ID}/query"
+
+    # HTTP 요청 헤더 설정
+    headers = {
+        "Authorization": f"Bearer {NOTION_API_TOKEN}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28"
+    }
+
+    # 데이터베이스 쿼리를 실행하여 응답 받기
+    response = requests.post(endpoint, headers=headers)
+
+    if response.status_code == 200:
+        data = response.json()
+        now = datetime.datetime.now()
+
+        for item in data["results"]:
+            date_str = item["properties"]["date"]["rich_text"][0]["text"]["content"]
+            item_date = datetime.datetime.strptime(date_str, '%Y-%m-%d')
+
+            if (now - item_date).days > 60:
+                page_id = item["id"]
+                delete_endpoint = f"https://api.notion.com/v1/blocks/{page_id}"  # 페이지 삭제를 위한 올바른 엔드포인트
+                delete_response = requests.delete(delete_endpoint, headers=headers)
+
+                if delete_response.status_code == 200:
+                    print(f"{date_str} 날짜의 페이지가 삭제되었습니다.")
+                else:
+                    print(f"페이지 삭제 중 에러 발생: {delete_response.status_code} - {delete_response.text}")
+    else:
+        print(f"데이터베이스 쿼리 중 에러 발생: {response.status_code} - {response.text}")
+
+
+
 def start(): 
     now = datetime.datetime.now()
     print(f"{now}: 루프 시작")
     securityNotice_crawling()
     time.sleep(1)
     boanNews_crawling()
+    time.sleep(1)
+    delete_old_pages()
     time.sleep(1)
     now = datetime.datetime.now()
     print(f"{now}: 루프 끝")
@@ -185,6 +229,8 @@ def start():
 securityNotice_crawling()
 time.sleep(1)
 boanNews_crawling()
+time.sleep(1)
+delete_old_pages()
 time.sleep(1)
 # 스케줄러 설정: 매일 00:00에 start 함수 실행
 schedule.every(30).minutes.do(start)
