@@ -23,7 +23,6 @@ ssl_context.verify_mode = ssl.CERT_NONE
 NOTION_API_TOKEN = "NOTION_API_TOKEN"
 DATABASE_ID = "DATABASE_ID"
 
-
 def create_notion_page(title, content, url, date, category_):
     # 현재 날짜와 비교
     try:
@@ -106,7 +105,7 @@ def Duplicate_check(url_to_check):
         data = response.json()
         for item in data["results"]:
             # URL 속성을 기준으로 중복 확인
-            if item["properties"]["url"]["url"] == url_to_check:
+            if item["properties"]["url"]["url"].strip() == url_to_check.strip():
                 return 1  # 중복된 경우
         return 0  # 중복되지 않은 경우
     return 0
@@ -200,23 +199,37 @@ def securityNotice_crawling():
 # 기존 보안 뉴스 크롤링
 def boanNews_crawling():
     try:
-        url = 'http://www.boannews.com/media/news_rss.xml?skind=5'
-        response = requests.get(url)
-        response.encoding = response.apparent_encoding
-        root = ET.fromstring(response.text)
-        channel = root[0]
-        items = filter(lambda x: x.tag == 'item', channel)
+        # RSS URL 리스트
+        urls = [
+            'http://www.boannews.com/media/news_rss.xml?skind=5',  # 필터링 없음
+            'http://www.boannews.com/media/news_rss.xml?skind=6',  # 필터링 없음
+            'http://www.boannews.com/media/news_rss.xml?mkind=1'  # [긴급] 필터링
+        ]
 
-        for item in items:
-            title = item[0].text.strip()
-            url = item[1].text
-            content = item[2].text
-            date = date_re(item[4].text)
-            category_ = "보안뉴스"
-            if Duplicate_check(url) == 0:
-                create_notion_page(title, content, url, date, category_)
+        for rss_url in urls:
+            response = requests.get(rss_url)
+            response.encoding = response.apparent_encoding
+            root = ET.fromstring(response.text)
+            channel = root[0]
+            items = filter(lambda x: x.tag == 'item', channel)
+
+            for item in items:
+                title = item[0].text.strip()
+                url = item[1].text
+                content = item[2].text
+                date = date_re(item[4].text)
+                category_ = "보안뉴스"
+
+                # 특정 URL에만 [긴급] 필터링 적용
+                if rss_url == 'http://www.boannews.com/media/news_rss.xml?mkind=1' and "[긴급]" not in title:
+                    continue
+
+                if Duplicate_check(url) == 0:
+                    create_notion_page(title, content, url, date, category_)
     except Exception as e:
         print(f"boanNews 크롤링 중 오류 발생: {e}")
+
+
 
 # 데일리시큐 크롤링 함수
 def dailysecu_crawling():
@@ -304,11 +317,11 @@ def delete_old_entries():
 
 # 스케줄링 함수
 def start():
+    boanNews_crawling()
+    time.sleep(1)
     dailysecu_crawling()
     time.sleep(1)
     securityNotice_crawling()
-    time.sleep(1)
-    boanNews_crawling()
     time.sleep(1)
     crawl_ncsc_page()
     time.sleep(1)
@@ -323,3 +336,4 @@ schedule.every(1).hours.do(start)
 while True:
     schedule.run_pending()
     time.sleep(1)
+
