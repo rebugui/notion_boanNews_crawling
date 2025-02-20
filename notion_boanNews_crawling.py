@@ -31,6 +31,18 @@ GEMINI_API_KEY = "GEMINI_API_KEY"  # 여기에 실제 API 키를 넣으세요.
 NOTION_API_TOKEN = "NOTION_API_TOKEN"
 DATABASE_ID = "DATABASE_ID"
 
+# 슬랙 Webhook URL
+SLACK_WEBHOOK_URL = "SLACK_WEBHOOK_URL"  # 여기에 슬랙 Webhook URL을 넣으세요.
+
+def send_slack_message(message):
+    """슬랙으로 메시지 보내기"""
+    payload = {"text": message}
+    try:
+        response = requests.post(SLACK_WEBHOOK_URL, json=payload)
+        response.raise_for_status()  # HTTP 오류 발생 시 예외 발생
+        print("슬랙 메시지 전송 성공!")
+    except requests.exceptions.RequestException as e:
+        print(f"슬랙 메시지 전송 실패: {e}")
 
 def summarize_text(text):
     try:
@@ -49,7 +61,7 @@ def summarize_text(text):
 \n단락에는 친근한 어투를 사용하세요, 너무 어렵거나 전문적인 용어만 사용하지 마세요. 가급적 능동태를 이용하세요, 수동태를 이용하지마세요.
 \n문제나 도전에 직면했을 때 긍정적인 상황으로 전환하려는 태도를 보이세요, 거리감을 만들어내는 공식적이거나 냉담한 어투를 피하세요.
 \n300글자 이내로 요약하세요:
-\n뉴스본문\n{text}"""]
+\n뉴스본문:\n{text}"""]
         )
 
 
@@ -142,6 +154,7 @@ def create_notion_page(title, content, url, date, category_):
         print("노션 페이지가 성공적으로 생성되었습니다.")
     else:
         print(f"에러 발생: {response.status_code} - {response.text}")
+        send_slack_message(f"[ERROR] 에러 발생: {response.status_code} - {response.text}")
 
 # 중복 확인 함수 (URL 기반)
 def Duplicate_check(url_to_check):
@@ -224,6 +237,7 @@ def crawl_ncsc_page():
         driver.close()
     except Exception as e:
         print(f"NCSC 크롤링 중 오류 발생: {e}")
+        send_slack_message(f"[ERROR] NCSC 크롤링 중 오류 발생: {e}")
 
 
 
@@ -248,6 +262,7 @@ def securityNotice_crawling():
                 create_notion_page(title, summarized_content, url, date, category_)
     except Exception as e:
         print(f"securityNotice 크롤링 중 오류 발생: {e}")
+        send_slack_message(f"[ERROR] securityNotice 크롤링 중 오류 발생: {e}")
 
 # 기존 보안 뉴스 크롤링
 def boanNews_crawling():
@@ -282,6 +297,7 @@ def boanNews_crawling():
                     create_notion_page(title, summarized_content, url, date, category_)
     except Exception as e:
         print(f"boanNews 크롤링 중 오류 발생: {e}")
+        send_slack_message(f"[ERROR] boanNews 크롤링 중 오류 발생: {e}")
 
 
 
@@ -306,6 +322,8 @@ def dailysecu_crawling():
                 create_notion_page(title, summarized_content, url, date, category_)
     except Exception as e:
         print(f"dailysecu 크롤링 중 오류 발생: {e}")
+        send_slack_message(f"[ERROR] dailysecu 크롤링 중 오류 발생: {e}")
+
 
 # 오래된 항목 삭제 함수
 def delete_old_entries():
@@ -353,11 +371,14 @@ def delete_old_entries():
                             delete_response = requests.patch(delete_endpoint, headers=headers, data=json.dumps(data))
 
                             print(f"[DEBUG] Delete request for {page_id}: {delete_response.status_code} - {delete_response.text}")  # 삭제 요청 정보 출력
-
+                            send_slack_message(f"[DEBUG] Delete request for {page_id}: {delete_response.status_code} - {delete_response.text}")
                             if delete_response.status_code == 200:
                                 print(f"[DEBUG] 오래된 항목 삭제 완료: {page_id}")
+                                send_slack_message(f"[DEBUG] 오래된 항목 삭제 완료: {page_id}")
                             else:
                                 print(f"[ERROR] 항목 삭제 실패: {delete_response.status_code} - {delete_response.text}")
+                                send_slack_message(f"[ERROR] 항목 삭제 실패: {delete_response.status_code} - {delete_response.text}")
+
 
                             time.sleep(1)  # 1초 대기
                     else:
@@ -372,22 +393,35 @@ def delete_old_entries():
 
 # 스케줄링 함수
 def start():
-    boanNews_crawling()
-    time.sleep(1)
-    dailysecu_crawling()
-    time.sleep(1)
-    securityNotice_crawling()
-    time.sleep(1)
-    crawl_ncsc_page()
-    time.sleep(1)
-    delete_old_entries()
-    time.sleep(1)
+    try:
+        print(f"[{datetime.datetime.now()}] 스케쥴링을 시작합니다")
+        send_slack_message(f"[DEBUG] 보안이슈 스케쥴링을 시작합니다")
+        boanNews_crawling()
+        time.sleep(1)
+        dailysecu_crawling()
+        time.sleep(1)
+        securityNotice_crawling()
+        time.sleep(1)
+        crawl_ncsc_page()
+        time.sleep(1)
+        delete_old_entries()
+        time.sleep(1)
+        send_slack_message(f"[DEBUG] 보안이슈 스케쥴링이 끝났습니다.")
+    except Exception as e:
+        error_message = f"스크립트 실행 중 오류 발생: {e}"
+        print(error_message)
+        send_slack_message(error_message)
 
 # 스케줄 설정
 start()  # 스크립트 실행 시 한 번 실행
 schedule.every(1).hours.do(start)
 
 # 루프 실행
-while True:
-    schedule.run_pending()
-    time.sleep(1)
+try:
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+except Exception as e:
+    error_message = f"메인 루프 실행 중 오류 발생: {e}"
+    print(error_message)
+    send_slack_message(error_message)
