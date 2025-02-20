@@ -6,6 +6,7 @@ import time
 import urllib.request
 import xml.etree.ElementTree as ET
 import re
+import os
 import ssl
 import datetime
 from selenium import webdriver
@@ -13,15 +14,65 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
+from google import genai
+
 
 # SSL 인증서 검증 비활성화
 ssl_context = ssl.create_default_context()
 ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
 
+# Gemini API 키 설정
+GEMINI_API_KEY = "GEMINI_API_KEY"  # 여기에 실제 API 키를 넣으세요.
+
+
+
 # Notion API 토큰 및 데이터베이스 ID
 NOTION_API_TOKEN = "NOTION_API_TOKEN"
 DATABASE_ID = "DATABASE_ID"
+
+
+def summarize_text(text):
+    try:
+        # Gemini 클라이언트 생성
+        client = genai.Client(api_key=GEMINI_API_KEY)
+
+        # 텍스트 요약 요청
+        response = client.models.generate_content(
+            model="gemini-pro",  # 또는 "gemini-2.0-flash"와 같은 다른 Gemini 모델
+            contents=[f"""
+너는 뉴스 요약 Assistant입니다.
+\n뉴스 텍스트를 제시하겠습니다. 텍스트를 참고하여, 주제를 다른 사람이 이해할 수 있게 설명하는 역할을 합니다.
+\n우선 단계별로 생각하세요. 뉴스에 내용을 어떻게 요약하여 전달할지 생각합니다.
+\n중복되는 내용은 생략하되, 중복되는 내용의 요약 비중을 높입니다.
+\n사례보다는 개념과 논거를 강조하여 요약하세요.
+\n단락에는 친근한 어투를 사용하세요, 너무 어렵거나 전문적인 용어만 사용하지 마세요. 가급적 능동태를 이용하세요, 수동태를 이용하지마세요.
+\n문제나 도전에 직면했을 때 긍정적인 상황으로 전환하려는 태도를 보이세요, 거리감을 만들어내는 공식적이거나 냉담한 어투를 피하세요.
+\n300글자 이내로 요약하세요:
+\n뉴스본문\n{text}"""]
+        )
+
+
+        # 응답에서 요약된 텍스트 추출
+        if response.candidates:
+            best_candidate = response.candidates[0]  # 첫 번째 후보 선택
+
+            if hasattr(best_candidate, "content") and hasattr(best_candidate.content, "parts"):
+                summary = "".join(part.text for part in best_candidate.content.parts if hasattr(part, "text"))
+                return summary.strip() if summary else "요약 실패 (내용 없음)"
+            else:
+                print("Gemini API: No valid content found in candidate")
+                return "요약 실패 (유효한 내용 없음)"
+
+        else:
+            print("Gemini API: No candidates returned")
+            return "요약 실패 (후보 없음)"
+
+    except Exception as e:
+        print(f"Gemini API 오류: {e}")
+        return "요약 실패"
+
+
 
 def create_notion_page(title, content, url, date, category_):
     # 현재 날짜와 비교
@@ -132,10 +183,9 @@ def date_re(date_string):
                     return None
     return date_object.strftime('%Y-%m-%d')
 
-# NCSC 크롤링 함수
+
 def crawl_ncsc_page():
     try:
-        # 기존 코드 수정
         options = Options()
         options.add_argument('--headless')  # 헤드리스 모드 (선택 사항)
         options.add_argument('--no-sandbox')  # sandbox 비활성화 (필요한 경우)
@@ -156,7 +206,7 @@ def crawl_ncsc_page():
         tr_tags = board_list_table.find('tbody').find_all('tr')
         for tr_tag in tr_tags:
             td_tags = tr_tag.find_all('td')
-            number = td_tags[0].text.strip()
+            number = td_tags[0].text.strip()  # 수정: td_tags[0].text로 처리
             a_tag = td_tags[1].find('a')
 
             if a_tag:
@@ -164,8 +214,8 @@ def crawl_ncsc_page():
                 time.sleep(2)
                 link = driver.current_url
                 title = a_tag.text.strip()
-                posting_date = td_tags[2].text.strip()  # 날짜 데이터
-                posting_date = date_re(posting_date)    # 형식 변환
+                posting_date = td_tags[2].text.strip()  # 수정: td_tags[2].text로 처리
+                posting_date = date_re(posting_date)  # 형식 변환
 
                 if Duplicate_check(link) == 0:
                     create_notion_page(title, "NCSC 게시글", link, posting_date, "NCSC")
@@ -174,6 +224,8 @@ def crawl_ncsc_page():
         driver.close()
     except Exception as e:
         print(f"NCSC 크롤링 중 오류 발생: {e}")
+
+
 
 # 기존 보안 공지 크롤링
 def securityNotice_crawling():
@@ -192,7 +244,8 @@ def securityNotice_crawling():
             date = date_re(item[4].text)
             category_ = "krcert"
             if Duplicate_check(url) == 0:
-                create_notion_page(title, content, url, date, category_)
+                summarized_content = summarize_text(content)
+                create_notion_page(title, summarized_content, url, date, category_)
     except Exception as e:
         print(f"securityNotice 크롤링 중 오류 발생: {e}")
 
@@ -225,7 +278,8 @@ def boanNews_crawling():
                     continue
 
                 if Duplicate_check(url) == 0:
-                    create_notion_page(title, content, url, date, category_)
+                    summarized_content = summarize_text(content)
+                    create_notion_page(title, summarized_content, url, date, category_)
     except Exception as e:
         print(f"boanNews 크롤링 중 오류 발생: {e}")
 
@@ -244,11 +298,12 @@ def dailysecu_crawling():
         for item in items:
             title = item[0].text.strip()
             url = item[1].text
-            content = item[2].text.strip()  # Description을 content로 사용
+            content = item[2].text
             date = date_re(item[4].text)  # pubDate 처리
             category_ = "데일리시큐"
             if Duplicate_check(url) == 0:
-                create_notion_page(title, content, url, date, category_)
+                summarized_content = summarize_text(content)
+                create_notion_page(title, summarized_content, url, date, category_)
     except Exception as e:
         print(f"dailysecu 크롤링 중 오류 발생: {e}")
 
